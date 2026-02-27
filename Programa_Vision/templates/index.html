@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AntiÑapas-Pons | Industrial Guardian v3.0</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Outfit:wght@300;400;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+    <style>
+        :root {
+            --bg-dark: #05080a;
+            --accent-blue: #00d2ff;
+            --accent-red: #ff3e3e;
+            --accent-amber: #ffcc00;
+            --text-main: #e0e6ed;
+            --card-glass: rgba(255, 255, 255, 0.03);
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        sidebar {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.85);
+            border-right: 1px solid rgba(0, 210, 255, 0.1);
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            backdrop-filter: blur(20px);
+            z-index: 100;
+        }
+
+        .logo h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.2rem;
+            color: var(--accent-blue);
+            text-transform: uppercase;
+            margin: 0;
+        }
+
+        main {
+            flex-grow: 1;
+            padding: 20px;
+            display: grid;
+            grid-template-rows: 1fr 180px;
+            gap: 15px;
+        }
+
+        .simulator-container {
+            position: relative;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 2px solid #1a2027;
+        }
+
+        #video-underlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        .canvas-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+
+        .tool-btn {
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            font-weight: 600;
+            transition: 0.2s;
+        }
+
+        .tool-btn:hover {
+            background: var(--accent-blue);
+            color: #000;
+        }
+
+        .tool-btn.active {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 10px var(--accent-blue);
+        }
+
+        .event-log {
+            background: var(--card-glass);
+            border-radius: 15px;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+
+        .event-item {
+            margin-bottom: 5px;
+            padding-left: 10px;
+            border-left: 2px solid var(--accent-blue);
+        }
+
+        .event-item.DANGER {
+            border-left-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        /* HUD */
+        .hud-top {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .hud-top span {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.6rem;
+            color: var(--accent-blue);
+            border: 1px solid rgba(0, 210, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <sidebar>
+        <div class="logo">
+            <h1>AntiÑapas-Pons</h1>
+        </div>
+
+        <p style="font-size: 0.6rem; color: #555; margin-top: 20px;">HERRAMIENTAS DE SEGURIDAD</p>
+        <button class="tool-btn" id="btn-red" onclick="setTool('RED')">Dibujar Zona ROJA</button>
+        <button class="tool-btn" id="btn-amber" onclick="setTool('AMBER')">Dibujar Zona ÁMBAR</button>
+        <button class="tool-btn" onclick="addPillar()">+ Añadir Pilar</button>
+        <button class="tool-btn" onclick="addCabinet()">+ Añadir Cuadro</button>
+        <button class="tool-btn" onclick="addDummy()" style="border-color: #2ecc71; color: #2ecc71;">+ AÑADIR OPERARIO
+            TEST</button>
+
+        <p style="font-size: 0.6rem; color: #555; margin-top: 10px;">CONFIGURACIÓN FONDO</p>
+        <input type="file" id="bg-upload" style="display: none;" onchange="handleBgUpload(event)">
+        <button class="tool-btn" onclick="document.getElementById('bg-upload').click()">Cargar Imagen Recinto</button>
+        <button class="tool-btn" onclick="toggleVideo()" id="btn-video"
+            style="border-color: var(--accent-amber);">Pausar Video Real</button>
+
+        <p style="font-size: 0.6rem; color: #555; margin-top: 10px;">CONTROL PLC</p>
+        <select class="tool-btn" id="mode-select" style="width: 100%;" onchange="syncMode(this.value)">
+            <option value="STOP">STOP</option>
+            <option value="AUTOMATICO">AUTOMÁTICO</option>
+            <option value="MANUAL">MANUAL</option>
+            <option value="MANTENIMIENTO">MANTENIMIENTO</option>
+        </select>
+
+        <button class="tool-btn" onclick="saveLayout()"
+            style="background: var(--accent-blue); color: #000; margin-top: auto; font-weight: bold;">GUARDAR &
+            SINCRONIZAR</button>
+        <button class="tool-btn" onclick="clearCanvas()" style="border-color: #555; color: #888;">RESET TOTAL</button>
+    </sidebar>
+
+    <main>
+        <div class="simulator-container" id="sim-container">
+            <!-- Video de fondo (Simulado con imagen si no hay stream) -->
+            <img src="https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=1200&q=80"
+                id="video-underlay">
+
+            <canvas id="canvas" class="canvas-overlay"></canvas>
+
+            <div class="hud-top">
+                <span>EAGLE_EYE_V3.0_ONLINE</span>
+                <span id="sys-mode-hud">MODE: STOP</span>
+                <span id="alert-status-hud" style="color: #00ff88;">STATUS: SECURE</span>
+            </div>
+        </div>
+
+        <div class="event-log" id="log">
+            <div class="event-item">LOG: Sistema AntiÑapas inicializado...</div>
+        </div>
+    </main>
+
+    <script>
+        let canvas;
+        let drawingPoints = [];
+        let currentTool = null;
+        let isVideoActive = true;
+        let currentMode = "STOP";
+
+        const sirenAudio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3'); // Mock audio
+
+        // Inicializar Fabric
+        function init() {
+            const container = document.getElementById('sim-container');
+            canvas = new fabric.Canvas('canvas', {
+                width: container.offsetWidth,
+                height: container.offsetHeight,
+                backgroundColor: 'transparent'
+            });
+            window.addEventListener('resize', () => {
+                canvas.setWidth(container.offsetWidth);
+                canvas.setHeight(container.offsetHeight);
+            });
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            drawingPoints = [];
+            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+            if (tool) document.getElementById(`btn-${tool.toLowerCase()}`).classList.add('active');
+        }
+
+        canvas.on('mouse:down', function (o) {
+            if (!currentTool) return;
+            const pointer = canvas.getPointer(o.e);
+            drawingPoints.push({ x: pointer.x, y: pointer.y });
+
+            const dot = new fabric.Circle({ radius: 3, fill: 'white', left: pointer.x - 1.5, top: pointer.y - 1.5, selectable: false });
+            canvas.add(dot);
+
+            if (drawingPoints.length === 4) {
+                const color = currentTool === 'RED' ? 'rgba(255, 62, 62, 0.4)' : 'rgba(255, 204, 0, 0.4)';
+                const poly = new fabric.Polygon(drawingPoints, {
+                    fill: color, stroke: currentTool === 'RED' ? '#ff3e3e' : '#ffcc00', strokeWidth: 2,
+                    data: { type: currentTool, category: 'zone' }
+                });
+                canvas.add(poly);
+                canvas.getObjects('circle').forEach(c => canvas.remove(c));
+                setTool(null);
+            }
+        });
+
+        // Simulación de detección con el Dummy
+        canvas.on('object:moving', function (o) {
+            if (o.target.data?.type === 'dummy') {
+                checkCollision(o.target);
+            }
+        });
+
+        function checkCollision(dummy) {
+            if (currentMode !== 'AUTOMATICO') return;
+
+            const point = { x: dummy.left + dummy.width / 2, y: dummy.top + dummy.height / 2 };
+            const zones = canvas.getObjects().filter(obj => obj.data?.category === 'zone');
+
+            let status = 'SAFE';
+            zones.forEach(z => {
+                if (z.containsPoint(point)) status = z.data.type;
+            });
+
+            updateHUD(status);
+        }
+
+        function updateHUD(status) {
+            const hud = document.getElementById('alert-status-hud');
+            if (status === 'RED') {
+                hud.innerText = 'STATUS: DANGER - EMERGENCY_STOP';
+                hud.style.color = '#ff3e3e';
+                addLog('ALERTA ROJA: Intrusión detectada. Foto Capturada.', 'DANGER');
+                takeScreenshot();
+            } else if (status === 'AMBER') {
+                hud.innerText = 'STATUS: WARNING - SIREN_ON';
+                hud.style.color = '#ffcc00';
+                sirenAudio.play();
+            } else {
+                hud.innerText = 'STATUS: SECURE';
+                hud.style.color = '#00ff88';
+            }
+        }
+
+        function takeScreenshot() {
+            // Simular captura
+            const ts = new Date().toLocaleTimeString();
+            addLog(`Evidencia guardada: IMG_${ts}.jpg`, 'SECURE');
+        }
+
+        function addPillar() {
+            canvas.add(new fabric.Rect({ left: 100, top: 100, width: 40, height: 40, fill: '#2a2f36', stroke: '#555', data: { category: 'object' } }));
+        }
+
+        function addCabinet() {
+            canvas.add(new fabric.Rect({ left: 150, top: 150, width: 60, height: 35, fill: '#1f6feb', stroke: '#fff', data: { category: 'object' } }));
+        }
+
+        function addDummy() {
+            const dummy = new fabric.Circle({
+                radius: 20, fill: '#2ecc71', left: 50, top: 50,
+                stroke: '#fff', strokeWidth: 2,
+                data: { type: 'dummy', category: 'object' }
+            });
+            canvas.add(dummy);
+        }
+
+        function handleBgUpload(e) {
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                document.getElementById('video-underlay').src = event.target.result;
+                isVideoActive = false;
+                addLog('Fondo de recinto actualizado.');
+            }
+            reader.readAsDataURL(e.target.files[0]);
+        }
+
+        function toggleVideo() {
+            isVideoActive = !isVideoActive;
+            document.getElementById('btn-video').innerText = isVideoActive ? "Pausar Video Real" : "Activar Video Real";
+        }
+
+        function syncMode(mode) {
+            currentMode = mode;
+            document.getElementById('sys-mode-hud').innerText = `MODE: ${mode}`;
+            addLog(`Modo PLC cambiado a ${mode}`);
+        }
+
+        function addLog(msg, type = '') {
+            const log = document.getElementById('log');
+            const item = document.createElement('div');
+            item.className = `event-item ${type}`;
+            item.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            log.prepend(item);
+        }
+
+        async function saveLayout() {
+            const zones = canvas.getObjects().filter(o => o.data?.category === 'zone').map(z => ({
+                type: z.data.type,
+                points: z.points.map(p => ({ x: p.x + z.left, y: p.y + z.top }))
+            }));
+
+            await fetch('/api/layout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ zones })
+            });
+            alert("Sincronización completa con AntiÑapas-Pons PC");
+        }
+
+        function clearCanvas() { canvas.clear(); addLog('Layout reseteado.'); }
+
+        init();
+    </script>
+</body>
+
+</html>

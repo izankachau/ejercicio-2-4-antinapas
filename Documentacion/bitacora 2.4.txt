@@ -1,0 +1,18 @@
+BITÁCORA DE DESARROLLO - EJERCICIO 2.4: AntiÑapas-Pons
+
+PROYECTO: Sistema de Seguridad Perimetral por Visión Artificial
+DESARROLLADOR: IZAN PONS
+FECHA DE INICIO: 25/02/2026
+
+ESTADO ACTUAL: Fase de Concepción e Investigación Técnica.
+
+LOGS:
+1. Definición del concepto: "AntiÑapas-Pons". Solución contra la elusión de seguridades físicas en líneas de tratamiento de fruta.
+2. Establecimiento de objetivos:
+   - Detección de personas mediante Visión Artificial.
+   - Gestión de zonas (Roja/Paro, Ámbar/Aviso).
+   - Simulación de Layout (pilares, cuadros, zonas seguras).
+   - Comunicación PLC (Paro de emergencia vía OPC-UA).
+   - Privacidad (difuminado de rostros automático).
+3. Creación de la estructura del proyecto en el sistema.
+4. Inicio de investigación sobre normativa ISO 13849-1 y técnicas de Virtual Fencing.

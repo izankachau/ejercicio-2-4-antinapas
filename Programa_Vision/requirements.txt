@@ -1,0 +1,7 @@
+opencv-python
+mediapipe
+customtkinter
+asyncua
+flask
+Pillow
+sqlite3
