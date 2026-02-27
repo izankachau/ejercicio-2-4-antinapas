@@ -58,6 +58,19 @@ class AntiNapasApp(ctk.CTk):
         self.false_alarms = 0
         self.last_intrusion_time = None  # Hora de la última intrusión real
 
+        # Temporizador zona ámbar (10s → sirena de emergencia escalada)
+        self.amber_timer_start = None
+        self.amber_critical_triggered = False
+        self.AMBER_CRITICAL_SECONDS = 10
+
+        # Config email (inactiva por defecto — activar cuando se configure SMTP)
+        self.EMAIL_ENABLED = False
+        self.EMAIL_FROM    = "sistema@antinapas.local"
+        self.EMAIL_TO      = "responsable@empresa.com"
+        self.EMAIL_SMTP    = "smtp.gmail.com"
+        self.EMAIL_PORT    = 587
+        self.EMAIL_PASS    = ""  # Configurar antes de activar
+
         # Detector de caras
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
@@ -104,6 +117,14 @@ class AntiNapasApp(ctk.CTk):
         self.cam_selector.set("Cámara 0")
         self.cam_selector.pack(pady=5, padx=15, fill="x")
 
+        # Test de cámara
+        cam_test_row = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        cam_test_row.pack(pady=3, padx=15, fill="x")
+        ctk.CTkButton(cam_test_row, text="🔍 Probar Cámara", fg_color="#1a5276", height=28,
+                      command=self.test_camera).pack(side="left", fill="x", expand=True)
+        self.lbl_cam_ok = ctk.CTkLabel(cam_test_row, text="", font=("Arial", 14, "bold"), width=30)
+        self.lbl_cam_ok.pack(side="left", padx=5)
+
         # Rearme
         self.btn_reset = ctk.CTkButton(
             self.sidebar, text="⚡ REARME DE SEGURIDAD",
@@ -121,6 +142,7 @@ class AntiNapasApp(ctk.CTk):
         ctk.CTkButton(self.sidebar, text="🗑 Limpiar Todo", fg_color="#34495E", height=30, command=self.clear_all).pack(pady=(8, 3), padx=15, fill="x")
         ctk.CTkButton(self.sidebar, text="💾 Guardar Config", fg_color="#1F6FEB", height=30, command=self.save_settings_manual).pack(pady=3, padx=15, fill="x")
         ctk.CTkButton(self.sidebar, text="📊 Exportar CSV", fg_color="#34495E", height=30, command=self.export_report).pack(pady=3, padx=15, fill="x")
+        ctk.CTkButton(self.sidebar, text="🖼 Ver Capturas", fg_color="#1a5276", height=30, command=self.show_captures_viewer).pack(pady=3, padx=15, fill="x")
         self.grid_switch = ctk.CTkSwitch(self.sidebar, text="Guía de Alineación", command=self.toggle_grid, font=("Arial", 11))
         self.grid_switch.pack(pady=10, padx=15, anchor="w")
         self._sep()
@@ -156,6 +178,15 @@ class AntiNapasApp(ctk.CTk):
             fg_color="#6C3483", hover_color="#8E44AD", height=32,
             command=self.reset_daily_stats
         ).pack(pady=8, padx=15, fill="x")
+
+        self._sep()
+
+        # ── CONFIG EMAIL (inactivo) ──
+        ctk.CTkLabel(self.sidebar, text="ALERTAS EMAIL (inactivo)", font=("Arial", 10, "bold"), text_color="#555").pack(anchor="w", padx=15, pady=(5, 2))
+        email_frame = ctk.CTkFrame(self.sidebar, fg_color="#111", corner_radius=6)
+        email_frame.pack(pady=3, padx=15, fill="x")
+        ctk.CTkLabel(email_frame, text="Configura EMAIL_FROM, EMAIL_TO y EMAIL_PASS en el código\npara activar alertas automáticas por correo.",
+                     font=("Arial", 9), text_color="#555", wraplength=200, justify="left").pack(padx=8, pady=6)
 
         self._sep()
 
@@ -300,6 +331,8 @@ class AntiNapasApp(ctk.CTk):
         if self.mode != "AUTOMATICO":
             return
         if status == "DANGER":
+            self.amber_timer_start = None
+            self.amber_critical_triggered = False
             self.mode = "EMERGENCIA"
             self.mode_selector.set("STOP")
             self.mode_selector.configure(state="disabled")
@@ -307,14 +340,29 @@ class AntiNapasApp(ctk.CTk):
             self.after(0, lambda: self.status_indicator.configure(text="🔴 EMERGENCIA ACTIVA", text_color="#E74C3C"))
             self.trigger_recording(frame)
             self.play_siren("EMERGENCY")
+            self.send_email_alert("INTRUSIÓN CRÍTICA EN ZONA ROJA")
             self.log_event("!!! INTRUSIÓN CRÍTICA - SISTEMA BLOQUEADO !!!")
             self.after(500, self.ask_feedback)
-        elif status == "WARNING" and self.last_status != "WARNING":
-            self.play_siren("WARNING")
-            self.log_event("⚠ Alerta: Movimiento en zona ÁMBAR")
-            self.after(0, lambda: self.status_indicator.configure(text="🟡 ALERTA - ZONA ÁMBAR", text_color="#F39C12"))
-        elif status == "SAFE" and self.last_status != "SAFE":
-            self.after(0, lambda: self.status_indicator.configure(text="🟢 VIGILANDO", text_color="#27AE60"))
+        elif status == "WARNING":
+            # Iniciar temporizador de zona ámbar
+            if self.amber_timer_start is None:
+                self.amber_timer_start = time.time()
+                self.play_siren("WARNING")
+                self.log_event("⚠ Alerta: Movimiento en zona ÁMBAR — temporizador iniciado")
+                self.after(0, lambda: self.status_indicator.configure(text="🟡 ALERTA - ZONA ÁMBAR", text_color="#F39C12"))
+            # Escalar a sirena crítica si lleva >= 10s en zona ámbar
+            elapsed = time.time() - self.amber_timer_start
+            if elapsed >= self.AMBER_CRITICAL_SECONDS and not self.amber_critical_triggered:
+                self.amber_critical_triggered = True
+                self.play_siren("AMBER_CRITICAL")
+                self.log_event(f"🔥 ALERTA CRÍTICA: {int(elapsed)}s en zona ÁMBAR — sirena de máxima urgencia")
+                self.after(0, lambda: self.status_indicator.configure(text="🔥 ZONA ÁMBAR CRÍTICA", text_color="#FF6B00"))
+        elif status == "SAFE":
+            if self.last_status != "SAFE":
+                self.after(0, lambda: self.status_indicator.configure(text="🟢 VIGILANDO", text_color="#27AE60"))
+            # Resetear temporizador ámbar al salir de la zona
+            self.amber_timer_start = None
+            self.amber_critical_triggered = False
         self.last_status = status
 
     def ask_feedback(self):
@@ -432,12 +480,21 @@ class AntiNapasApp(ctk.CTk):
                 for freq in range(1400, 600, -40):
                     winsound.Beep(freq, 25)
 
+        def _amber_critical():
+            # Sirena más rápida y aguda para zona ámbar crítica (>=10s)
+            for _ in range(5):
+                winsound.Beep(1200, 100)
+                winsound.Beep(1600, 100)
+
         def _warning():
             winsound.Beep(800, 250)
             time.sleep(0.05)
             winsound.Beep(600, 250)
 
-        threading.Thread(target=_emergency if siren_type == "EMERGENCY" else _warning, daemon=True).start()
+        target = _emergency if siren_type == "EMERGENCY" else \
+                 _amber_critical if siren_type == "AMBER_CRITICAL" else \
+                 _warning
+        threading.Thread(target=target, daemon=True).start()
 
     # ─────────────────────────────── CONFIG ──────────────────────────────────
 
@@ -604,6 +661,86 @@ class AntiNapasApp(ctk.CTk):
             self.cap.release()
         self.save_settings()
         self.destroy()
+
+
+    # ─────────────────────────── NUEVAS FUNCIONES ────────────────────────────
+
+    def test_camera(self):
+        """Prueba si la fuente de vídeo seleccionada responde correctamente."""
+        def _test():
+            src = self.camera_source
+            self.after(0, lambda: self.lbl_cam_ok.configure(text="...", text_color="#888"))
+            cap = cv2.VideoCapture(src)
+            ok = cap.isOpened()
+            cap.release()
+            if ok:
+                self.after(0, lambda: self.lbl_cam_ok.configure(text="✅", text_color="#2ECC71"))
+                self.log_event(f"✅ Cámara '{src}' detectada y funcional.")
+            else:
+                self.after(0, lambda: self.lbl_cam_ok.configure(text="❌", text_color="#E74C3C"))
+                self.log_event(f"❌ No se pudo conectar a la cámara '{src}'.")
+        threading.Thread(target=_test, daemon=True).start()
+
+    def show_captures_viewer(self):
+        """Ventana emergente con miniatura de todas las capturas guardadas."""
+        folder = "captures"
+        if not os.path.exists(folder):
+            messagebox.showinfo("Sin capturas", "La carpeta 'captures' aún no existe.")
+            return
+        files = sorted(
+            [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))],
+            reverse=True
+        )
+        if not files:
+            messagebox.showinfo("Sin capturas", "No hay imágenes en la carpeta 'captures'.")
+            return
+
+        win = ctk.CTkToplevel(self)
+        win.title("🖼 Visor de Capturas de Emergencia")
+        win.geometry("800x520")
+        win.grab_set()
+
+        scroll = ctk.CTkScrollableFrame(win, fg_color="#0d1117")
+        scroll.pack(fill="both", expand=True, padx=10, pady=10)
+
+        cols = 4
+        for idx, fname in enumerate(files):
+            path = os.path.join(folder, fname)
+            try:
+                img = Image.open(path).resize((170, 96))
+                ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(170, 96))
+                cell = ctk.CTkFrame(scroll, fg_color="#161B22", corner_radius=6)
+                cell.grid(row=idx // cols, column=idx % cols, padx=6, pady=6)
+                ctk.CTkLabel(cell, image=ctk_img, text="").pack(padx=4, pady=(4, 0))
+                ctk.CTkLabel(cell, text=fname[:22], font=("Consolas", 8), text_color="#888").pack(pady=(0, 4))
+            except Exception:
+                pass
+
+    def send_email_alert(self, motivo: str):
+        """Envía alerta por email si EMAIL_ENABLED es True y la config es válida."""
+        if not self.EMAIL_ENABLED or not self.EMAIL_PASS:
+            return  # Inactivo hasta configurar
+        import smtplib
+        from email.mime.text import MIMEText
+        def _send():
+            try:
+                msg = MIMEText(
+                    f"ALERTA AntiÑapas-Pons\n\nMotivo: {motivo}\n"
+                    f"Hora: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"Sensibilidad: {self.anomaly_threshold}\n"
+                    f"Anomalías hoy: {self.confirmed_anomalies}"
+                )
+                msg["Subject"] = f"[AntiÑapas] Alerta: {motivo}"
+                msg["From"] = self.EMAIL_FROM
+                msg["To"] = self.EMAIL_TO
+                with smtplib.SMTP(self.EMAIL_SMTP, self.EMAIL_PORT) as server:
+                    server.starttls()
+                    server.login(self.EMAIL_FROM, self.EMAIL_PASS)
+                    server.sendmail(self.EMAIL_FROM, self.EMAIL_TO, msg.as_string())
+                self.log_event(f"📧 Email enviado a {self.EMAIL_TO}")
+            except Exception as e:
+                self.log_event(f"📧 Error al enviar email: {e}")
+        threading.Thread(target=_send, daemon=True).start()
 
 
 if __name__ == "__main__":
