@@ -1,0 +1,21 @@
+# Entornos virtuales
+venv/
+env/
+.env
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Bases de datos SQLite y archivos generados
+*.db
+*.sqlite3
+captures/
+logs/
+*.pdf
+
+# Archivos del sistema operativo y basurillas
+.DS_Store
+Thumbs.db
+desktop.ini
