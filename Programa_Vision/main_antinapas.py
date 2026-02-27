@@ -1,3 +1,11 @@
+# =============================================================================
+# AntiÑapas-Pons: Sistema de Seguridad Industrial - Ejercicio 2.4
+# Autor  : Izan Kachau
+# Fecha  : Febrero 2026
+# Desc.  : Sistema de vigilancia con visión artificial (OpenCV) para detección
+#          de intrusiones en zonas peligrosas con privacidad y alertas en tiempo real.
+# =============================================================================
+
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog

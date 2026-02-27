@@ -1,5 +1,7 @@
 # AntiÑapas-Pons: Seguridad Industrial Inteligente
 
+![Preview del sistema](assets/preview.png)
+
 Sistema avanzado de vigilancia basada en visión artificial para control perimetral y seguridad de los operarios en las fábricas.
 
 ## Características
