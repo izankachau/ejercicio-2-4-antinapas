@@ -56,6 +56,7 @@ class AntiNapasApp(ctk.CTk):
         # Estadísticas
         self.confirmed_anomalies = 0
         self.false_alarms = 0
+        self.last_intrusion_time = None  # Hora de la última intrusión real
 
         # Detector de caras
         self.face_cascade = cv2.CascadeClassifier(
@@ -138,6 +139,23 @@ class AntiNapasApp(ctk.CTk):
             lbl = ctk.CTkLabel(stats, text="0" if row < 2 else "1200", font=("Arial", 22, "bold"), text_color=color)
             lbl.pack(anchor="w", padx=10, pady=(0, 8 if row == 2 else 0))
             setattr(self, attr, lbl)
+
+        # Tasa de acierto
+        ctk.CTkLabel(stats, text="Tasa de acierto", font=("Arial", 9), text_color="#aaa").pack(anchor="w", padx=10, pady=(5, 0))
+        self.lbl_accuracy = ctk.CTkLabel(stats, text="--", font=("Arial", 16, "bold"), text_color="#2ECC71")
+        self.lbl_accuracy.pack(anchor="w", padx=10)
+
+        # Última intrusión real
+        ctk.CTkLabel(stats, text="Última intrusión real", font=("Arial", 9), text_color="#aaa").pack(anchor="w", padx=10, pady=(5, 0))
+        self.lbl_last_time = ctk.CTkLabel(stats, text="Ninguna aún", font=("Arial", 11), text_color="#aaa")
+        self.lbl_last_time.pack(anchor="w", padx=10, pady=(0, 8))
+
+        # Botón Reset diario
+        ctk.CTkButton(
+            self.sidebar, text="🔄 Reset Estadísticas del Día",
+            fg_color="#6C3483", hover_color="#8E44AD", height=32,
+            command=self.reset_daily_stats
+        ).pack(pady=8, padx=15, fill="x")
 
         self._sep()
 
@@ -308,6 +326,7 @@ class AntiNapasApp(ctk.CTk):
         )
         if respuesta:
             self.confirmed_anomalies += 1
+            self.last_intrusion_time = datetime.datetime.now().strftime("%H:%M:%S del %d/%m/%Y")
             self.log_event(f"✔ Anomalía confirmada (Total: {self.confirmed_anomalies})")
         else:
             self.false_alarms += 1
@@ -333,6 +352,33 @@ class AntiNapasApp(ctk.CTk):
         self.lbl_anomalies.configure(text=str(self.confirmed_anomalies))
         self.lbl_false.configure(text=str(self.false_alarms))
         self.lbl_sens.configure(text=str(self.anomaly_threshold))
+        # Tasa de acierto
+        total = self.confirmed_anomalies + self.false_alarms
+        if total > 0:
+            pct = int((self.confirmed_anomalies / total) * 100)
+            color = "#2ECC71" if pct >= 80 else "#F39C12" if pct >= 50 else "#E74C3C"
+            self.lbl_accuracy.configure(text=f"{pct}%", text_color=color)
+        else:
+            self.lbl_accuracy.configure(text="--", text_color="#aaa")
+        # Última intrusión real
+        if self.last_intrusion_time:
+            self.lbl_last_time.configure(text=self.last_intrusion_time, text_color="#E74C3C")
+
+    def reset_daily_stats(self):
+        """Resetea solo los contadores del día. NO toca sensibilidad ni zonas."""
+        confirm = messagebox.askyesno(
+            "Resetear estadísticas",
+            "¿Resetear los contadores de anomalías y falsas alarmas?\n\n"
+            "(La sensibilidad aprendida y las zonas NO se modifican)"
+        )
+        if confirm:
+            self.confirmed_anomalies = 0
+            self.false_alarms = 0
+            self.last_intrusion_time = None
+            self.update_stats_display()
+            self.lbl_last_time.configure(text="Ninguna aún", text_color="#aaa")
+            self.save_settings()
+            self.log_event("🔄 Estadísticas del día reseteadas. Sensibilidad y zonas intactas.")
 
     def safety_reset(self):
         self.mode = "AUTOMATICO"
